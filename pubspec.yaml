@@ -1,0 +1,89 @@
+name: genome
+description: "A new Flutter project."
+
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.9.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Firebase Core & Auth
+  firebase_core: ^3.5.0  
+  cloud_firestore: ^5.4.4
+  firebase_auth: ^5.7.0
+  google_sign_in: ^7.2.0
+
+  # File & Network
+  file_picker: ^10.3.3
+  http: ^1.2.2
+
+  # UI & UX
+  cupertino_icons: ^1.0.8
+  smooth_page_indicator: ^1.2.1
+  google_fonts: ^6.2.1
+  lottie: ^3.3.2
+
+  # ✨ Add table_calendar here
+  table_calendar: ^3.0.9
+
+  # State management & utils
+  provider: ^6.0.5
+  shared_preferences: ^2.1.0
+  flutter_localizations:
+    sdk: flutter
+
+  # Localization & AI
+  translator: ^1.0.4+1
+  flutter_dotenv: ^6.0.0
+  google_generative_ai: ^0.4.7
+
+  # Phone & file handling
+  flutter_libphonenumber: ^2.5.1
+  open_filex: ^4.7.0
+  share_plus: ^12.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/dna_bg.png
+    - assets/images/illustration1.png
+    - assets/images/illustration2.png
+    - assets/images/illustration3.png
+    - assets/images/illustration4.png
+    - assets/images/google.png
+    - assets/images/facebook.png
+    - assets/images/gmail.png
+    - assets/images/sms.png
+    - assets/images/sheild.png
+    - assets/images/chat_ico.png
+    - assets/images/chat_bg.png
+    - assets/images/chat_cu.png
+    - assets/images/doctor.png
+    - assets/images/Appointment.png
+    - assets/images/Settings.png
+    - assets/images/Customer Service.png
+    - assets/images/chatbot.png
+    - assets/images/camera.png
+    - assets/images/emo.png
+    - assets/images/attachment.png
+    - assets/images/send.png
+    - assets/images/back.png
+    - assets/images/call.png
+    - assets/images/Vector.png
+    - assets/images/video.png
+    - assets/images/book.png
+    - assets/images/my appointment.png
+    - assets/images/Dr_fawzya.png
+    - assets/images/Dr_fathy.png
+    - .env
