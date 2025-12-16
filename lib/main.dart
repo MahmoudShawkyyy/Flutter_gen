@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:genome/src/theme_provider.dart';
 import 'package:genome/src/utils/language_provider.dart';
 import 'package:genome/src/utils/user_provider.dart';
+import 'package:genome/src/utils/router_service.dart';
 
 import 'firebase_options.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -130,50 +131,106 @@ class AutoTranslateTextField extends StatelessWidget {
 }
 
 // 🏁 Main App
-class GenoraApp extends StatelessWidget {
+class GenoraApp extends StatefulWidget {
   const GenoraApp({super.key});
 
   @override
+  State<GenoraApp> createState() => _GenoraAppState();
+}
+
+class _GenoraAppState extends State<GenoraApp> {
+  String _initialRoute = '/onboarding';
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeRoute();
+  }
+
+  Future<void> _initializeRoute() async {
+    try {
+      final route = await RouterService.getInitialRoute();
+      if (mounted) {
+        setState(() {
+          _initialRoute = route.isNotEmpty ? route : '/onboarding';
+          _isLoading = false;
+        });
+      }
+    } catch (e, stackTrace) {
+      debugPrint('Error initializing route: $e');
+      debugPrint('Stack trace: $stackTrace');
+      if (mounted) {
+        setState(() {
+          _initialRoute = '/onboarding';
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final themeProvider = Provider.of<ThemeProvider>(context);
-    final languageProvider = Provider.of<LanguageProvider>(context);
-
-    return MaterialApp(
-      title: 'Genora',
-      debugShowCheckedModeBanner: false,
-
-      theme: themeProvider.lightTheme,
-      darkTheme: themeProvider.darkTheme,
-      themeMode: themeProvider.currentTheme,
-
-      locale: languageProvider.locale,
-      supportedLocales: const [Locale('en', ''), Locale('ar', '')],
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-
-      initialRoute: '/home',
-
-      routes: {
-        '/auth': (context) => const BaseLayout(child: AuthScreen()),
-        '/secure': (context) => const BaseLayout(child: SecureAccountScreen()),
-        '/verified': (context) =>
-            const BaseLayout(child: VerifiedSuccessScreen()),
-
-        '/home': (context) =>
-            const BaseLayout(child: HomeScreen(), showThemeButton: false),
-
-        '/settings': (context) => BaseLayout(child: SettingPage()),
-        '/book': (context) => const BaseLayout(child: BookAppointmentPage()),
-        '/chat': (context) => const BaseLayout(child: ChatScreen()),
-        '/Disease': (context) =>
-            const BaseLayout(child: DiseaseDetectionScreen()),
-        '/PatientAppointment': (context) => const BaseLayout(
-          child: MyAppointmentsPage(),
-          showThemeButton: false,
+    // Show simple loading screen without providers
+    if (_isLoading) {
+      return MaterialApp(
+        title: 'Genora',
+        debugShowCheckedModeBanner: false,
+        home: Scaffold(
+          body: Center(
+            child: CircularProgressIndicator(
+              color: const Color(0xFF1E2046),
+            ),
+          ),
         ),
+      );
+    }
+
+    // Build main app with providers once route is determined
+    return Consumer2<ThemeProvider, LanguageProvider>(
+      builder: (context, themeProvider, languageProvider, child) {
+        return MaterialApp(
+          title: 'Genora',
+          debugShowCheckedModeBanner: false,
+
+          theme: themeProvider.lightTheme,
+          darkTheme: themeProvider.darkTheme,
+          themeMode: themeProvider.currentTheme,
+
+          locale: languageProvider.locale,
+          supportedLocales: const [Locale('en', ''), Locale('ar', '')],
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+
+          initialRoute: _initialRoute,
+
+          routes: {
+            '/onboarding': (context) => const BaseLayout(
+                  child: OnboardingScreen(),
+                  showThemeButton: false,
+                ),
+            '/auth': (context) => const BaseLayout(child: AuthScreen()),
+            '/secure': (context) => const BaseLayout(child: SecureAccountScreen()),
+            '/verified': (context) =>
+                const BaseLayout(child: VerifiedSuccessScreen()),
+
+            '/home': (context) =>
+                const BaseLayout(child: HomeScreen(), showThemeButton: false),
+
+            '/settings': (context) => BaseLayout(child: SettingPage()),
+            '/book': (context) => const BaseLayout(child: BookAppointmentPage()),
+            '/chat': (context) => const BaseLayout(child: ChatScreen()),
+            '/Disease': (context) =>
+                const BaseLayout(child: DiseaseDetectionScreen()),
+            '/PatientAppointment': (context) => const BaseLayout(
+                  child: MyAppointmentsPage(),
+                  showThemeButton: false,
+                ),
+          },
+        );
       },
     );
   }

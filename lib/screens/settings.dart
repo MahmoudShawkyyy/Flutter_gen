@@ -4,6 +4,7 @@ import 'package:genome/src/theme_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:genome/src/utils/language_provider.dart';
 import 'package:genome/src/utils/user_provider.dart';
+import 'package:genome/src/utils/router_service.dart';
 import '../../main.dart';
 import 'package:genome/src/auth/auth_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -139,15 +140,24 @@ class _SettingPageState extends State<SettingPage> {
                     _buildMenuTile(
                       'Logout',
                       onTap: () async {
+                        // Sign out from Firebase Auth
+                        await FirebaseAuth.instance.signOut();
+                        
+                        // Clear user data
                         Provider.of<UserProvider>(
                           context,
                           listen: false,
                         ).clearUser();
 
-                        Navigator.of(context).pushAndRemoveUntil(
-                          MaterialPageRoute(builder: (_) => AuthScreen()),
-                          (route) => false,
-                        );
+                        // Clear auth token
+                        await RouterService.clearAuthToken();
+
+                        if (mounted) {
+                          Navigator.of(context).pushAndRemoveUntil(
+                            MaterialPageRoute(builder: (_) => AuthScreen()),
+                            (route) => false,
+                          );
+                        }
                       },
                     ),
                   ]),
@@ -290,12 +300,21 @@ class _SettingPageState extends State<SettingPage> {
         await user.delete();
       }
 
+      // Sign out from Firebase Auth
+      await FirebaseAuth.instance.signOut();
+      
+      // Clear user data
       Provider.of<UserProvider>(context, listen: false).clearUser();
 
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => AuthScreen()),
-        (route) => false,
-      );
+      // Clear auth token
+      await RouterService.clearAuthToken();
+
+      if (mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => AuthScreen()),
+          (route) => false,
+        );
+      }
     } catch (e) {
       print("Delete account error: $e");
 

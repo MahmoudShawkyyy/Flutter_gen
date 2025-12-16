@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../theme/app_background.dart';
 import 'package:genome/src/utils/user_provider.dart';
 import 'package:genome/src/utils/language_provider.dart';
+import 'package:genome/src/utils/router_service.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -19,6 +20,8 @@ class _AuthScreenState extends State<AuthScreen> {
   bool _isLoading = false;
   late bool isEnglish;
 
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+
   final _auth = FirebaseAuth.instance;
 
   final _nameController = TextEditingController();
@@ -26,10 +29,23 @@ class _AuthScreenState extends State<AuthScreen> {
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
+    super.dispose();
+  }
+
   // ---------------------------
   // Login / SignUp Logic
   // ---------------------------
   Future<void> _handleAuthAction() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
@@ -51,10 +67,6 @@ class _AuthScreenState extends State<AuthScreen> {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
 
-    if (email.isEmpty || password.isEmpty) {
-      throw Exception("Please enter email and password");
-    }
-
     try {
       final cred = await _auth.signInWithEmailAndPassword(
         email: email,
@@ -73,10 +85,32 @@ class _AuthScreenState extends State<AuthScreen> {
         throw Exception("Only patients can log in from this app.");
       }
 
+      final String? firestoreName = doc.data()?["name"] as String?;
+      final String? docEmail = doc.data()?["email"] as String?;
+      final authUser = cred.user;
+
+      if (firestoreName == null || docEmail == null) {
+        throw Exception("User data (name or email) is missing in Firestore.");
+      }
+      
+      // 1. تحديث اسم العرض في Firebase Auth
+      final bool isAuthNameMissing = authUser!.displayName == null || authUser.displayName!.isEmpty;
+      
+      if (isAuthNameMissing || authUser.displayName != firestoreName) {
+        await authUser.updateProfile(displayName: firestoreName); 
+        await authUser.reload(); 
+      }
+      
+      // 2. تحديث الـ UserProvider
       Provider.of<UserProvider>(context, listen: false).setUser(
-        doc["name"],
-        doc["email"],
+        firestoreName, 
+        docEmail,
       );
+
+      final token = await cred.user!.getIdToken();
+      if (token != null && token.isNotEmpty) {
+        await RouterService.setAuthToken(token);
+      }
 
       if (!mounted) return;
       Navigator.pushReplacementNamed(context, '/home');
@@ -84,6 +118,7 @@ class _AuthScreenState extends State<AuthScreen> {
       String message = "Login failed";
       if (e.code == "user-not-found") message = "User not found";
       if (e.code == "wrong-password") message = "Incorrect password";
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(message)),
       );
@@ -92,20 +127,8 @@ class _AuthScreenState extends State<AuthScreen> {
 
   Future<void> _signUpUser() async {
     final pass = _passwordController.text.trim();
-    final confirm = _confirmPasswordController.text.trim();
     final email = _emailController.text.trim();
     final name = _nameController.text.trim();
-
-    if (pass != confirm) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Passwords do not match')),
-      );
-      return;
-    }
-
-    if (email.isEmpty || name.isEmpty || pass.isEmpty) {
-      throw Exception("All fields are required");
-    }
 
     try {
       final cred = await _auth.createUserWithEmailAndPassword(
@@ -115,15 +138,21 @@ class _AuthScreenState extends State<AuthScreen> {
 
       final uid = cred.user!.uid;
 
-      /// 🔥 Save patient with UID in Firestore
+      // تعيين الاسم في Firebase Auth عند التسجيل
+      await cred.user!.updateProfile(displayName: name);
+
+      // حفظ البيانات في Firestore
       await FirebaseFirestore.instance.collection("users").doc(uid).set({
-        "uid": uid,                  // ← UID مضمونة
+        "uid": uid, 
         "name": name,
         "email": email,
         "role": "patient",
         "createdAt": FieldValue.serverTimestamp(),
       });
 
+      await RouterService.setSignedUp();
+
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Account created successfully! Please log in.'),
@@ -136,6 +165,7 @@ class _AuthScreenState extends State<AuthScreen> {
       String message = "Sign Up failed";
       if (e.code == "email-already-in-use") message = "Email is already used";
       if (e.code == "weak-password") message = "Password is too weak";
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(message)),
       );
@@ -150,18 +180,18 @@ class _AuthScreenState extends State<AuthScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Reset Password'),
+        title: Text(isEnglish ? 'Reset Password' : 'إعادة تعيين كلمة المرور'),
         content: TextField(
           controller: resetController,
-          decoration: const InputDecoration(
-            labelText: 'Enter your email',
-            border: OutlineInputBorder(),
+          decoration: InputDecoration(
+            labelText: isEnglish ? 'Enter your email' : 'أدخل بريدك الإلكتروني',
+            border: const OutlineInputBorder(),
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: Text(isEnglish ? 'Cancel' : 'إلغاء'),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -171,7 +201,7 @@ class _AuthScreenState extends State<AuthScreen> {
                   email: resetController.text.trim(),
                 );
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Password reset link sent!')),
+                  SnackBar(content: Text(isEnglish ? 'Password reset link sent!' : 'تم إرسال رابط إعادة تعيين كلمة المرور!')),
                 );
               } catch (e) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -183,7 +213,7 @@ class _AuthScreenState extends State<AuthScreen> {
               backgroundColor: const Color(0xFF1E2046),
               foregroundColor: Colors.white,
             ),
-            child: const Text('Send'),
+            child: Text(isEnglish ? 'Send' : 'إرسال'),
           ),
         ],
       ),
@@ -191,7 +221,7 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   // ---------------------------
-  // UI
+  // UI Building
   // ---------------------------
   @override
   Widget build(BuildContext context) {
@@ -242,8 +272,7 @@ class _AuthScreenState extends State<AuthScreen> {
               AnimatedContainer(
                 duration: const Duration(milliseconds: 400),
                 curve: Curves.easeInOut,
-                padding:
-                    const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
+                padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
                 decoration: BoxDecoration(
                   color: theme.cardColor.withOpacity(0.95),
                   borderRadius: BorderRadius.circular(24),
@@ -259,10 +288,7 @@ class _AuthScreenState extends State<AuthScreen> {
                   children: [
                     _buildTabs(theme),
                     const SizedBox(height: 24),
-                    if (isLogin)
-                      _buildLoginFields(theme)
-                    else
-                      _buildSignUpFields(theme),
+                    _buildFormFields(theme),
                     const SizedBox(height: 30),
                     _buildActionButton(theme),
                     if (isLogin)
@@ -282,6 +308,95 @@ class _AuthScreenState extends State<AuthScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildFormFields(ThemeData theme) {
+    return Form(
+      key: _formKey, 
+      child: Column(
+        children: [
+          // حقل الاسم الكامل (للتسجيل فقط)
+          if (!isLogin)
+            _buildTextFormField(
+              controller: _nameController,
+              label: isEnglish ? 'Full Name' : 'الاسم الكامل',
+              theme: theme,
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return isEnglish ? 'Name is required' : 'الاسم مطلوب';
+                }
+                // 🚀 تعديل الاسم: يجب أن يحتوي على حروف ومسافات فقط
+                // يدعم الحروف اللاتينية والعربية
+                if (!RegExp(r"^[a-zA-Z\u0600-\u06FF\s]+$").hasMatch(value.trim())) {
+                    return isEnglish ? 'Name must contain letters only' : 'يجب أن يحتوي الاسم على أحرف فقط';
+                }
+                return null;
+              },
+            ),
+          if (!isLogin) const SizedBox(height: 10),
+
+          // حقل البريد الإلكتروني
+          _buildTextFormField(
+            controller: _emailController,
+            label: isEnglish ? 'Email' : 'البريد الإلكتروني',
+            theme: theme,
+            keyboardType: TextInputType.emailAddress,
+            validator: (value) {
+              if (value == null || !value.contains('@') || !value.contains('.')) {
+                return isEnglish ? 'Enter a valid email' : 'أدخل بريد إلكتروني صحيح';
+              }
+              return null;
+            },
+          ),
+          const SizedBox(height: 10),
+
+          // حقل كلمة المرور
+          _buildTextFormField(
+            controller: _passwordController,
+            label: isEnglish ? 'Password' : 'كلمة المرور',
+            theme: theme,
+            obscureText: _obscurePassword,
+            suffixIcon: IconButton(
+              icon: Icon(
+                _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                color: theme.iconTheme.color,
+              ),
+              onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+            ),
+            validator: (value) {
+              if (value == null || value.length < 6) {
+                return isEnglish ? 'Password must be at least 6 characters' : 'كلمة المرور 6 أحرف على الأقل';
+              }
+              
+              // 🚀 تعديل الباسورد: يجب أن يحتوي على حروف وأرقام
+              final hasLetters = RegExp(r'[a-zA-Z\u0600-\u06FF]').hasMatch(value);
+              final hasDigits = RegExp(r'[0-9]').hasMatch(value);
+
+              if (!hasLetters || !hasDigits) {
+                return isEnglish ? 'Must contain letters and numbers' : 'يجب أن تحتوي على حروف وأرقام';
+              }
+              return null;
+            },
+          ),
+          const SizedBox(height: 10),
+
+          // حقل تأكيد كلمة المرور (للتسجيل فقط)
+          if (!isLogin)
+            _buildTextFormField(
+              controller: _confirmPasswordController,
+              label: isEnglish ? 'Confirm Password' : 'تأكيد كلمة المرور',
+              theme: theme,
+              obscureText: true,
+              validator: (value) {
+                if (value != _passwordController.text) {
+                  return isEnglish ? 'Passwords do not match' : 'كلمتا المرور غير متطابقتين';
+                }
+                return null;
+              },
+            ),
+        ],
       ),
     );
   }
@@ -326,92 +441,6 @@ class _AuthScreenState extends State<AuthScreen> {
     );
   }
 
-  Widget _buildLoginFields(ThemeData theme) {
-    return Column(
-      children: [
-        TextField(
-          controller: _emailController,
-          decoration: InputDecoration(
-            labelText: isEnglish ? 'Email' : 'البريد الإلكتروني',
-            labelStyle: TextStyle(color: theme.hintColor),
-          ),
-          style: TextStyle(color: theme.textTheme.bodyMedium!.color),
-        ),
-        const SizedBox(height: 10),
-        TextField(
-          controller: _passwordController,
-          obscureText: _obscurePassword,
-          decoration: InputDecoration(
-            labelText: isEnglish ? 'Password' : 'كلمة المرور',
-            labelStyle: TextStyle(color: theme.hintColor),
-            suffixIcon: IconButton(
-              icon: Icon(
-                _obscurePassword ? Icons.visibility_off : Icons.visibility,
-                color: theme.iconTheme.color,
-              ),
-              onPressed: () =>
-                  setState(() => _obscurePassword = !_obscurePassword),
-            ),
-          ),
-          style: TextStyle(color: theme.textTheme.bodyMedium!.color),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSignUpFields(ThemeData theme) {
-    return Column(
-      children: [
-        TextField(
-          controller: _nameController,
-          decoration: InputDecoration(
-            labelText: isEnglish ? 'Full Name' : 'الاسم الكامل',
-            labelStyle: TextStyle(color: theme.hintColor),
-          ),
-          style: TextStyle(color: theme.textTheme.bodyMedium!.color),
-        ),
-        const SizedBox(height: 10),
-        TextField(
-          controller: _emailController,
-          decoration: InputDecoration(
-            labelText: isEnglish ? 'Email' : 'البريد الإلكتروني',
-            labelStyle: TextStyle(color: theme.hintColor),
-          ),
-          style: TextStyle(color: theme.textTheme.bodyMedium!.color),
-        ),
-        const SizedBox(height: 10),
-        TextField(
-          controller: _passwordController,
-          obscureText: _obscurePassword,
-          decoration: InputDecoration(
-            labelText: isEnglish ? 'Password' : 'كلمة المرور',
-            labelStyle: TextStyle(color: theme.hintColor),
-            suffixIcon: IconButton(
-              icon: Icon(
-                _obscurePassword ? Icons.visibility_off : Icons.visibility,
-                color: theme.iconTheme.color,
-              ),
-              onPressed: () =>
-                  setState(() => _obscurePassword = !_obscurePassword),
-            ),
-          ),
-          style: TextStyle(color: theme.textTheme.bodyMedium!.color),
-        ),
-        const SizedBox(height: 10),
-        TextField(
-          controller: _confirmPasswordController,
-          obscureText: true,
-          decoration: InputDecoration(
-            labelText:
-                isEnglish ? 'Confirm Password' : 'تأكيد كلمة المرور',
-            labelStyle: TextStyle(color: theme.hintColor),
-          ),
-          style: TextStyle(color: theme.textTheme.bodyMedium!.color),
-        ),
-      ],
-    );
-  }
-
   Widget _buildActionButton(ThemeData theme) {
     return SizedBox(
       width: double.infinity,
@@ -436,6 +465,30 @@ class _AuthScreenState extends State<AuthScreen> {
                 ? (isEnglish ? 'Login' : 'تسجيل الدخول')
                 : (isEnglish ? 'Sign Up' : 'التسجيل')),
       ),
+    );
+  }
+  
+  // دالة مُساعدة لبناء TextFormField (تم إبقاؤها بدون تغيير جوهري)
+  Widget _buildTextFormField({
+    required TextEditingController controller,
+    required String label,
+    required ThemeData theme,
+    String? Function(String?)? validator,
+    TextInputType keyboardType = TextInputType.text,
+    bool obscureText = false,
+    Widget? suffixIcon,
+  }) {
+    return TextFormField(
+      controller: controller,
+      keyboardType: keyboardType,
+      obscureText: obscureText,
+      style: TextStyle(color: theme.textTheme.bodyMedium!.color),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: TextStyle(color: theme.hintColor),
+        suffixIcon: suffixIcon,
+      ),
+      validator: validator,
     );
   }
 }

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 import '../theme_provider.dart';
 import '../utils/language_provider.dart';  // Import LanguageProvider
+import '../utils/router_service.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -15,8 +16,13 @@ class OnboardingScreen extends StatefulWidget {
 class _OnboardingScreenState extends State<OnboardingScreen> {
   final PageController _controller = PageController();
 
-  void _goToAuth() {
-    Navigator.pushReplacementNamed(context, '/auth');
+  Future<void> _goToAuth() async {
+    // Mark onboarding as completed
+    await RouterService.setOnboardingCompleted();
+    // Navigate to auth screen
+    if (mounted) {
+      Navigator.pushReplacementNamed(context, '/auth');
+    }
   }
 
   @override

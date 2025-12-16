@@ -1,34 +1,49 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:genome/src/chat/chat_screen.dart';
-import 'package:genome/src/utils/language_provider.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // 💡 الاستيراد للحصول على اسم المستخدم
 import 'package:provider/provider.dart';
-import 'package:genome/src/theme_provider.dart';
-import 'package:genome/src/theme/app_background.dart';
-import '../doctor_patient_chat.dart';
+// استيراد الشاشات والمكتبات الأخرى...
+import 'package:genome/src/chat/chat_screen.dart';
 import 'package:genome/screens/settings.dart';
-import 'package:genome/screens/PatientAppointment.dart';
+import 'package:genome/screens/PatientAppointment.dart'; 
 import 'package:genome/src/book/book_appointment_page.dart';
-import 'package:genome/src/book/select_date_time_page.dart';
 import 'package:genome/inbox_page.dart';
+
+// تعريف الألوان الجديدة
+class AppColors {
+  static const Color primaryBlue = Color(0xFF2E3164);
+  static const Color lightBackground = Color(0xFFD9DAF3);
+  static const Color secondaryBackground = Color(0xFFB6B5D6);
+  static const Color cardColor = Color(0xFFA9AAD4); 
+}
+
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
+  static const double _imageSize = 110.0; 
+  static const double _largeImageSize = 150.0; 
+  static const double _smallCardHeight = 320.0; 
+
   @override
   Widget build(BuildContext context) {
+    // 💡 الحصول على بيانات المستخدم وتحديد اسم العرض
+    final User? currentUser = FirebaseAuth.instance.currentUser;
+    // يتم استخدام displayName. إذا كان فارغًا، يتم استخدام "Guest"
+    final String userName = currentUser?.displayName ?? "Guest"; 
+    
     return Scaffold(
       body: Container(
         width: double.infinity,
         height: double.infinity,
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            colors: [Color(0xFFD9DAF3), Color(0xFFB6B5D6)],
+            colors: [AppColors.lightBackground, AppColors.secondaryBackground],
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
           ),
         ),
         child: Stack(
           children: [
+            // صورة الخلفية
             Positioned(
               bottom: -20,
               right: -30,
@@ -44,18 +59,44 @@ class HomeScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      "HOMEPAGE",
-                      style: TextStyle(
-                        fontSize: 30,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xff2e3164),
-                      ),
+                    // --- تعديل العنوان والترحيب ---
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic, 
+                      children: [
+                        // 1. العنوان "HOMEPAGE"
+                        const Text(
+                          "HOMEPAGE",
+                          style: TextStyle(
+                            fontSize: 30,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.primaryBlue,
+                          ),
+                        ),
+                        
+                        // 2. ترحيب المستخدم
+                        Expanded(
+                          child: Text(
+                            "Welcome, $userName", // استخدام اسم المستخدم المُحدَّث
+                            textAlign: TextAlign.end,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 16, 
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.primaryBlue,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
+                    // --- نهاية تعديل العنوان والترحيب ---
 
                     const SizedBox(height: 25),
 
-                    _buildHomeCard(
+                    // 1. بطاقة حجز الموعد
+                    _buildLargeCard(
                       title: "Book An Appointment Now",
                       subtitle:
                           "Schedule your appointment instantly with just one click.",
@@ -72,10 +113,12 @@ class HomeScreen extends StatelessWidget {
 
                     const SizedBox(height: 25),
 
+                    // 2. صف البطاقات الصغيرة
                     Row(
                       children: [
                         Expanded(
-                          child: _buildSmallCard(
+                          // بطاقة الإعدادات
+                          child: _buildSmallSquareCard(
                             title: "Go To Settings",
                             subtitle: "manage your account easily",
                             image: "assets/images/Settings.png",
@@ -92,10 +135,11 @@ class HomeScreen extends StatelessWidget {
                         const SizedBox(width: 20),
 
                         Expanded(
-                          child: _buildSmallCard(
+                          // بطاقة خدمة العملاء
+                          child: _buildSmallSquareCard(
                             title: "Customer Service",
                             subtitle:
-                                "Get quick support\nfrom our team whenever you need it.",
+                                "Get quick support from our team whenever you need it.",
                             image: "assets/images/Customer Service.png",
                             onTap: () {
                               Navigator.push(
@@ -112,7 +156,8 @@ class HomeScreen extends StatelessWidget {
 
                     const SizedBox(height: 25),
 
-                    _buildHomeCard(
+                    // 3. بطاقة Chatbot
+                    _buildLargeCard(
                       title: "Ask Our Chatbot",
                       subtitle:
                           "Chat with our smart assistant for fast answers and instant help.",
@@ -127,7 +172,8 @@ class HomeScreen extends StatelessWidget {
 
                     const SizedBox(height: 25),
 
-                    _buildHomeCard(
+                    // 4. بطاقة مشاهدة المواعيد
+                    _buildLargeCard(
                       title: "View Your Appointments",
                       subtitle: "Look at your schedules",
                       image: "assets/images/my appointment.png",
@@ -140,6 +186,7 @@ class HomeScreen extends StatelessWidget {
                         );
                       },
                     ),
+                    const SizedBox(height: 25),
                   ],
                 ),
               ),
@@ -150,7 +197,11 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildHomeCard({
+  // ******************************************************
+  // دالة البطاقات الكبيرة الطولية (Retained)
+  // ******************************************************
+
+  Widget _buildLargeCard({
     required String title,
     required String subtitle,
     required String image,
@@ -159,16 +210,15 @@ class HomeScreen extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFFBCBEE6),
+        color: AppColors.cardColor,
         borderRadius: BorderRadius.circular(30),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Image.asset(image, width: 70),
-              const SizedBox(width: 15),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -176,9 +226,9 @@ class HomeScreen extends StatelessWidget {
                     Text(
                       title,
                       style: const TextStyle(
-                        fontSize: 18,
+                        fontSize: 20, 
                         fontWeight: FontWeight.bold,
-                        color: Color(0xFF2E3164),
+                        color: AppColors.primaryBlue,
                       ),
                     ),
                     const SizedBox(height: 5),
@@ -186,7 +236,7 @@ class HomeScreen extends StatelessWidget {
                       subtitle,
                       style: const TextStyle(
                         fontSize: 14,
-                        color: Color(0xFF2E3164),
+                        color: AppColors.primaryBlue,
                       ),
                     ),
                   ],
@@ -196,65 +246,89 @@ class HomeScreen extends StatelessWidget {
           ),
 
           const SizedBox(height: 20),
-
-          Align(alignment: Alignment.bottomRight, child: _goButton(onTap)),
+          
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Image.asset(image, width: _largeImageSize), 
+              _goButton(onTap),
+            ],
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildSmallCard({
+  // ******************************************************
+  // دالة البطاقات المربعة الصغيرة (Retained)
+  // ******************************************************
+
+  Widget _buildSmallSquareCard({
     required String title,
     required String subtitle,
     required String image,
     required VoidCallback onTap,
   }) {
     return Container(
-      padding: const EdgeInsets.all(15),
+      height: _smallCardHeight, 
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: const Color(0xFFBCBEE6),
+        color: AppColors.cardColor,
         borderRadius: BorderRadius.circular(30),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Image.asset(image, width: 55),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  title,
-                  maxLines: 2,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF2E3164),
-                  ),
+              Text(
+                title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.primaryBlue,
                 ),
+              ),
+              const SizedBox(height: 5),
+              Text(
+                subtitle,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 13, color: AppColors.primaryBlue),
               ),
             ],
           ),
 
-          const SizedBox(height: 10),
-
-          Text(
-            subtitle,
-            style: const TextStyle(fontSize: 13, color: Color(0xFF2E3164)),
-          ),
-
           const SizedBox(height: 15),
 
+          Expanded(
+            child: Center(
+              child: Image.asset(image, width: _largeImageSize), 
+            ),
+          ),
+
+          const SizedBox(height: 10),
+          
           Align(alignment: Alignment.bottomRight, child: _goButton(onTap)),
         ],
       ),
     );
   }
 
+  // ******************************************************
+  // دالة زر GO (Retained)
+  // ******************************************************
+
   Widget _goButton(VoidCallback onTap) {
     return ElevatedButton(
       onPressed: onTap,
       style: ElevatedButton.styleFrom(
-        backgroundColor: const Color(0xFF2E3164),
+        backgroundColor: AppColors.primaryBlue,
         padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 10),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
       ),

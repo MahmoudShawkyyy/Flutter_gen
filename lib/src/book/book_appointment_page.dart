@@ -16,6 +16,7 @@ class _BookAppointmentPageState extends State<BookAppointmentPage> {
   String? _selectedTime;
   String? selectedDoctorId;
   String? selectedDoctorName;
+  List<Map<String, dynamic>> _doctors = [];
 
   // Controllers
   final _nameController = TextEditingController();
@@ -45,13 +46,32 @@ class _BookAppointmentPageState extends State<BookAppointmentPage> {
   @override
   void initState() {
     super.initState();
+    _loadDoctors();
+    // Pre-fill email if logged in
+    final currentUser = _auth.currentUser;
+    if (currentUser != null && currentUser.email != null) {
+      _emailController.text = currentUser.email!;
+    }
   }
 
+  // --- MODIFICATION 3: Enforce doctor selection before navigation and pass data ---
   Future<void> _selectDateTime() async {
+    // Check if a doctor has been selected
+    if (selectedDoctorId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please select a doctor first")),
+      );
+      return;
+    }
+
+    // Pass the selected doctor's ID and Name to the time selection page
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => const SelectDateTimePage(),
+        builder: (_) => SelectDateTimePage(
+          doctorId: selectedDoctorId!,
+          doctorName: selectedDoctorName!,
+        ),
       ),
     );
 
@@ -60,53 +80,15 @@ class _BookAppointmentPageState extends State<BookAppointmentPage> {
         _selectedDay = result['date'];
         _selectedTime = result['time'];
       });
-      _assignDoctorByDay();
-      _fetchBookedSlots();
+      // We no longer need to call _fetchBookedSlots here since the data is now selected.
     }
   }
 
-  // Assign doctor automatically by day
-  Future<void> _assignDoctorByDay() async {
-    if (_selectedDay == null) return;
-
-    int weekday = _selectedDay!.weekday;
-
-    final doctorsSnap = await FirebaseFirestore.instance
-        .collection('doctors')
-        .orderBy('createdAt')
-        .get();
-
-    if (doctorsSnap.docs.isEmpty) return;
-
-    if (weekday == 6 || weekday == 7) {
-      selectedDoctorId = doctorsSnap.docs[0].id;
-      selectedDoctorName = doctorsSnap.docs[0]['fullName'];
-    } else if (weekday == 1) {
-      selectedDoctorId =
-          doctorsSnap.docs.length > 1 ? doctorsSnap.docs[1].id : doctorsSnap.docs[0].id;
-      selectedDoctorName =
-          doctorsSnap.docs.length > 1 ? doctorsSnap.docs[1]['fullName'] : doctorsSnap.docs[0]['fullName'];
-    } else if (weekday == 3 || weekday == 4) {
-      selectedDoctorId =
-          doctorsSnap.docs.length > 2 ? doctorsSnap.docs[2].id : doctorsSnap.docs[0].id;
-      selectedDoctorName =
-          doctorsSnap.docs.length > 2 ? doctorsSnap.docs[2]['fullName'] : doctorsSnap.docs[0]['fullName'];
-    } else if (weekday == 5) {
-      selectedDoctorId =
-          doctorsSnap.docs.length > 3 ? doctorsSnap.docs[3].id : doctorsSnap.docs[0].id;
-      selectedDoctorName =
-          doctorsSnap.docs.length > 3 ? doctorsSnap.docs[3]['fullName'] : doctorsSnap.docs[0]['fullName'];
-    } else if (weekday == 2) {
-      selectedDoctorId =
-          doctorsSnap.docs.length > 4 ? doctorsSnap.docs[4].id : doctorsSnap.docs[0].id;
-      selectedDoctorName =
-          doctorsSnap.docs.length > 4 ? doctorsSnap.docs[4]['fullName'] : doctorsSnap.docs[0]['fullName'];
-    } 
-    
-  }
-
+  // NOTE: This function is only needed when the doctor dropdown changes, 
+  // not after returning from SelectDateTimePage. 
+  // We keep it as is since it is called on doctor selection.
   Future<void> _fetchBookedSlots() async {
-    if (_selectedDay == null) return;
+    if (_selectedDay == null || selectedDoctorId == null) return;
 
     final dateStr =
         "${_selectedDay!.year}-${_selectedDay!.month.toString().padLeft(2, '0')}-${_selectedDay!.day.toString().padLeft(2, '0')}";
@@ -114,6 +96,7 @@ class _BookAppointmentPageState extends State<BookAppointmentPage> {
     final snapshot = await FirebaseFirestore.instance
         .collection('appointments')
         .where('date', isEqualTo: dateStr)
+        .where('doctorId', isEqualTo: selectedDoctorId)
         .get();
 
     final Map<String, bool> slots = {};
@@ -124,6 +107,29 @@ class _BookAppointmentPageState extends State<BookAppointmentPage> {
     setState(() {
       bookedSlots = slots;
     });
+  }
+
+  Future<void> _loadDoctors() async {
+    try {
+      final doctorsSnap = await FirebaseFirestore.instance
+          .collection('doctors')
+          .orderBy('createdAt')
+          .get();
+
+      setState(() {
+        _doctors = doctorsSnap.docs
+            .map((d) => {
+                  'id': d.id,
+                  'name': d.data()['fullName'] ?? 'Doctor',
+                })
+            .toList();
+      });
+    } catch (e) {
+      // In a real app, use a more visible error reporting tool
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to load doctors: $e')),
+      );
+    }
   }
 
   Future<void> _bookAppointment() async {
@@ -169,7 +175,8 @@ class _BookAppointmentPageState extends State<BookAppointmentPage> {
       return;
     }
 
-    if (_emailController.text.trim().toLowerCase() != currentUser.email!.toLowerCase()) {
+    if (_emailController.text.trim().toLowerCase() !=
+        currentUser.email!.toLowerCase()) {
       setState(() => errorEmail = "Email does not match your account");
       return;
     }
@@ -183,7 +190,7 @@ class _BookAppointmentPageState extends State<BookAppointmentPage> {
 
     if (selectedDoctorId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("No doctor assigned")),
+        const SnackBar(content: Text("Please select a doctor")),
       );
       return;
     }
@@ -195,14 +202,17 @@ class _BookAppointmentPageState extends State<BookAppointmentPage> {
     final appointmentsRef = FirebaseFirestore.instance.collection('appointments');
 
     try {
+      // --- FINAL CONCURRENCY CHECK: Must check against the selected doctor ---
       final existing = await appointmentsRef
           .where('date', isEqualTo: dateStr)
           .where('time', isEqualTo: _selectedTime)
+          .where('doctorId', isEqualTo: selectedDoctorId) // Correct filter
           .get();
 
       if (existing.docs.isNotEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('This time slot is already booked')),
+          const SnackBar(
+              content: Text('This time slot is already booked for this doctor')),
         );
         return;
       }
@@ -259,8 +269,44 @@ class _BookAppointmentPageState extends State<BookAppointmentPage> {
                 ),
                 const SizedBox(height: 15),
 
+                // Doctor dropdown
+                DropdownButtonFormField<String>(
+                  decoration: InputDecoration(
+                    labelText: "Select Doctor",
+                    filled: true,
+                    fillColor: const Color(0xffe8eaf3),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(15),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                  value: selectedDoctorId,
+                  items: _doctors
+                      .map(
+                        (doc) => DropdownMenuItem<String>(
+                          value: doc['id'],
+                          child: Text(doc['name']),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (val) {
+                    setState(() {
+                      selectedDoctorId = val;
+                      selectedDoctorName = _doctors
+                          .firstWhere((d) => d['id'] == val)['name']
+                          .toString();
+                      // Clear previously selected time when doctor changes
+                      _selectedDay = null;
+                      _selectedTime = null;
+                    });
+                  },
+                  hint: const Text("Choose doctor"),
+                ),
+                const SizedBox(height: 15),
+
                 _customField("Full Name", _nameController, errorText: errorName),
-                _customField("Phone Number", _phoneController, errorText: errorPhone),
+                _customField("Phone Number", _phoneController,
+                    errorText: errorPhone),
                 _customField("Email", _emailController, errorText: errorEmail),
 
                 const SizedBox(height: 20),
@@ -302,7 +348,7 @@ class _BookAppointmentPageState extends State<BookAppointmentPage> {
                         child: Text(
                           _selectedDay == null || _selectedTime == null
                               ? "No Selected time"
-                              : "${_selectedDay!.weekdayName}, ${_selectedDay!.monthName} ${_selectedDay!.day}\nDoctor: $selectedDoctorName\n$_selectedTime",
+                              : "${_selectedDay!.weekdayName}, ${_selectedDay!.monthName} ${_selectedDay!.day}\nDoctor: ${selectedDoctorName ?? 'Not selected'}\n$_selectedTime",
                           style: const TextStyle(fontSize: 14),
                         ),
                       ),
@@ -335,7 +381,8 @@ class _BookAppointmentPageState extends State<BookAppointmentPage> {
     );
   }
 
-  Widget _customField(String label, TextEditingController controller, {String? errorText}) {
+  Widget _customField(String label, TextEditingController controller,
+      {String? errorText}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -360,22 +407,38 @@ class _BookAppointmentPageState extends State<BookAppointmentPage> {
   }
 }
 
-// Extensions for month/day names
+// Extensions for month/day names (retained)
 extension on DateTime {
   String get monthName {
     const months = [
       "",
-      "January", "February", "March", "April", "May", "June",
-      "July", "August", "September", "October", "November", "December",
+      "January",
+      "February",
+      "March",
+      "April",
+      "May",
+      "June",
+      "July",
+      "August",
+      "September",
+      "October",
+      "November",
+      "December",
     ];
-    return months[this.month];
+    return months[month];
   }
 
   String get weekdayName {
     const days = [
       "",
-      "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday",
+      "Saturday",
+      "Sunday"
     ];
-    return days[this.weekday];
+    return days[weekday];
   }
 }

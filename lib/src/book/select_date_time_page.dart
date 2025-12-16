@@ -2,8 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+// --- MODIFICATION 1: Add doctorId and doctorName as required parameters ---
 class SelectDateTimePage extends StatefulWidget {
-  const SelectDateTimePage({super.key});
+  final String doctorId;
+  final String doctorName;
+  const SelectDateTimePage({
+    super.key,
+    required this.doctorId,
+    required this.doctorName,
+  });
 
   @override
   State<SelectDateTimePage> createState() => _SelectDateTimePageState();
@@ -33,7 +40,13 @@ class _SelectDateTimePageState extends State<SelectDateTimePage> {
   @override
   void initState() {
     super.initState();
-    _selectedDay = _today.isBefore(_minDate) ? _minDate : _today;
+    // Set the initial selected day based on constraints
+    _selectedDay = _today.isBefore(_minDate)
+        ? _minDate
+        : isSameDay(_today, _minDate)
+            ? _today
+            : DateTime(_today.year, _today.month, _today.day); // Ensures selection starts today if possible
+
     _fetchBookedSlots();
   }
 
@@ -43,9 +56,11 @@ class _SelectDateTimePageState extends State<SelectDateTimePage> {
     final dateStr =
         "${_selectedDay!.year}-${_selectedDay!.month.toString().padLeft(2, '0')}-${_selectedDay!.day.toString().padLeft(2, '0')}";
 
+    // --- MODIFICATION 2: Filter the query by 'doctorId' (from widget) ---
     final snapshot = await FirebaseFirestore.instance
         .collection('appointments')
         .where('date', isEqualTo: dateStr)
+        .where('doctorId', isEqualTo: widget.doctorId) // Filter by selected doctor
         .get();
 
     final Map<String, bool> slots = {};
@@ -59,7 +74,7 @@ class _SelectDateTimePageState extends State<SelectDateTimePage> {
   }
 
   void _onDaySelected(DateTime selectedDay, DateTime focusedDay) {
-    // منع اختيار أيام قبل اليوم الحالي أو قبل 1 ديسمبر 2025
+    // منع اختيار أيام قبل اليوم الحالي أو قبل 1 ديسمبر 2025 (Original logic retained)
     if (selectedDay.isBefore(_today) || selectedDay.isBefore(_minDate)) {
       return;
     }
@@ -95,9 +110,9 @@ class _SelectDateTimePageState extends State<SelectDateTimePage> {
                   onPressed: () => Navigator.pop(context),
                 ),
                 const SizedBox(height: 10),
-                const Text(
-                  "Select a Date & Time",
-                  style: TextStyle(
+                Text(
+                  "Select Date & Time for Dr. ${widget.doctorName}", // Added doctor name for clarity
+                  style: const TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.bold,
                     color: Color(0xff1F3C88),
@@ -267,7 +282,7 @@ extension on DateTime {
       "November",
       "December",
     ];
-    return months[this.month];
+    return months[month];
   }
 
   String get weekdayName {
@@ -281,6 +296,6 @@ extension on DateTime {
       "Saturday",
       "Sunday"
     ];
-    return days[this.weekday];
+    return days[weekday];
   }
 }

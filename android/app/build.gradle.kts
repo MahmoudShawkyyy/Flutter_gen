@@ -14,6 +14,12 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+    
+    // Suppress Java 8 deprecation warnings from dependencies
+    tasks.withType<JavaCompile>().configureEach {
+        options.compilerArgs.add("-Xlint:-options")
+        options.compilerArgs.add("-Xlint:-deprecation")
+    }
 
     kotlinOptions {
         jvmTarget = JavaVersion.VERSION_11.toString()
